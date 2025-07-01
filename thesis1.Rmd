@@ -1,0 +1,1284 @@
+---
+title: "thesis1"
+author: "FAM"
+date: "2025-03-11"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+install.packages("readr")
+library(readr)
+library(eurostat)
+library(readxl)
+library(dplyr)
+library(gt)
+library(RColorBrewer)
+library(sf)
+library(reshape2)
+library(scales)
+library(viridis)
+library(forcats)
+```
+
+#SCENARIO ##Figure 1
+
+```{r}
+time_range <- 2014:2024
+
+IT_pop <- get_eurostat("tps00001", time_format = "num")
+
+IT_pop <- IT_pop |>
+  filter(geo == "IT", TIME_PERIOD %in% time_range)
+
+IT_pop <- IT_pop |>
+  arrange(TIME_PERIOD) |>
+  mutate(values_MIL = round(values / 1000000,3))
+
+IT_popG <- IT_pop |> 
+  arrange(TIME_PERIOD) |> 
+  mutate(annual_growth = (((values / lag(values)) - 1) * 100))
+
+IT_pop_t <- IT_pop |> 
+  select(TIME_PERIOD, values_MIL) |> 
+  pivot_wider(names_from = TIME_PERIOD, values_from = values_MIL)
+
+IT_pop_t[nrow(IT_pop_t) + 1, ] <- as.list(IT_popG$annual_growth)
+rownames(IT_pop_t) <- c("Values (Mil)", "Annual growth (%)")
+
+IT_pop_t |> gt(rownames_to_stub = TRUE) |>
+  tab_header(
+    title = md("**Figure 1**  \nPopulation trend in Italy"),
+    subtitle = "From 2014 to 2024") |>
+  tab_options(
+    data_row.padding = px(6),
+    heading.align = 'left',
+    column_labels.background.color = 'lightpink'
+  ) |>
+  tab_style(
+    style = cell_text(
+      weight = 'bold', 
+    ),
+    locations = cells_title(groups = 'title')
+  ) |>
+  fmt_number(
+    rows = c("Values (Mil)", "Annual growth (%)"), 
+    decimals = 3
+  ) |>
+  tab_source_note(source_note = "Source: Eurostat (tps00001)")
+```
+
+##Figure 2
+
+```{r}
+time_range <- c(2014, 2024)
+get_eurostat("tps00010", time_format = "num") |>
+  filter(geo=="IT" & TIME_PERIOD<=time_range[2] & TIME_PERIOD>=time_range[1]) |>
+  ggplot(aes(x=TIME_PERIOD, y=values, fill=indic_de)) +
+  geom_col(colour="black", alpha=.6, width=1) +
+  geom_text(aes(x=TIME_PERIOD, y=values, label=paste(values, "%", sep="")), position = position_stack(vjust = 0.5), size=3) +
+  scale_x_continuous(breaks=time_range[1]:time_range[2], minor_breaks=time_range[1]:time_range[2]) +
+  theme_bw() +
+   scale_fill_brewer(palette = "Pastel1")+
+  labs(title="Population by age cohort",
+       x = "Year",
+       y = "%",
+       fill="",
+       caption="Eurostat (tps00010)",
+       tag= "Figure 2") +
+  theme(legend.position="right",
+        legend.text=element_text(size=6),
+        legend.key.size = unit(.5, "cm"),
+        axis.text=element_text(size=8),
+        axis.title=element_text(size=14, face="bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size=8)
+        )
+ggsave("./img/figure2.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 3
+
+```{r}
+get_eurostat("tepsr_wc170", time_format = "num") |> 
+  filter(geo=="IT" & TIME_PERIOD>=time_range[1] & TIME_PERIOD<=time_range[2]) |>  
+  filter(age == "Y20-64") |>
+  ggplot(aes(x = TIME_PERIOD, y = values,)) +
+    geom_area(alpha = .8, fill = brewer.pal(3, "Pastel1")[1], color="black") +
+    geom_text(aes(label = paste(values, "%", sep = "")), size = 4, vjust=-1) +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    labs(
+        title = "Unemployment Rate",
+        subtitle = "Y20-64",
+        y = "%",
+        x = "Year",
+        fill = "",
+        caption = "Eurostat (tepsr_wc170)",
+       tag= "Figure 3"
+    ) + 
+    theme(
+        legend.position = "right", 
+        axis.text = element_text(size = 8),
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(.5, "cm"),
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure3.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 4
+
+```{r}
+get_eurostat("tepsr_wc170", time_format = "num") |> 
+  filter(geo=="IT" & TIME_PERIOD>=time_range[1] & TIME_PERIOD<=time_range[2]) |>  
+  filter(age != "Y15-74") |>
+  ggplot(aes(x = TIME_PERIOD, y = values, fill = age)) +
+    geom_col(colour = "black", alpha = .8, position = position_dodge(.9)) +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    scale_fill_brewer(palette = "Pastel1") +
+    labs(
+        title = "Unemployment Rate",
+        subtitle = "by Age Cohort",
+        y = "%",
+        x = "Year",
+        fill = "Age cohort",
+        caption = "Eurostat (tepsr_wc170)",
+        tag= "Figure 4"
+    ) + 
+    theme(
+        legend.position = "right",
+        axis.text = element_text(size = 8),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(.5, "cm"),
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure4.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 5
+
+```{r}
+get_eurostat("tec00115", time_format = "num") |> 
+  filter(geo == "IT" & TIME_PERIOD >= time_range[1] + 1 & TIME_PERIOD <= time_range[2] & unit == "CLV_PCH_PRE_HAB") |> 
+  ggplot(aes(x = TIME_PERIOD, y = values, label = values, fill = values)) +
+    geom_hline(yintercept = 0, color = "red", linetype = 2) +
+    geom_line(linetype = 2) +
+    geom_point(shape = 22, alpha = .8, size = 8) +
+    geom_text(hjust = .5, size = 2.5, color = "black") +
+    scale_fill_gradient(low = "red", high = "green") +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2], limits = c(time_range[1], time_range[2])) +
+    theme_bw() +
+    labs(
+        title = "GDP per capita (% change on previous year, real values)",
+        y = "%",
+        x = "Year",
+        fill = "value",
+        caption = "Eurostat (tec00115)",
+        tag= "Figure 5"
+    ) + 
+    theme(
+        legend.position = "none", 
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure5.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 6
+
+```{r}
+countries_EU <- c("IT","AT","BE","FR","DE","EL","PT","ES","FI","SK")
+
+get_eurostat("nama_10_co3_p3", time_format = "num") |>
+    filter(coicop == "CP011") |>
+    filter(geo %in% countries_EU & unit == "PC_GDP") |>
+    filter(TIME_PERIOD == 2022) |>
+    ggplot(aes(x = fct_reorder(geo, values), y = values)) +
+    geom_col(color = "black", position = position_dodge(.9), fill = brewer.pal(3, "Pastel1")[1]) +
+    geom_hline(yintercept = mean(food |> filter(TIME_PERIOD == 2022) |> pull(values)), color = brewer.pal(3, "Set2")[2], linetype = 2) +
+    theme_bw() +
+    labs(
+        title = "Consumption of Food (% of GDP)",
+        subtitle = "Year 2022",
+        y = "%",
+        x = "Country",
+        fill = "value",
+        caption = "Eurostat (nama_10_co3_p3)",
+        tag= "Figure 6"
+    ) + 
+    theme(
+        legend.position = "none",
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure6.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 7
+
+```{r}
+d.vol <- read_excel("d_valvol.xls")
+
+d.vol |> 
+  pivot_longer(names_to = "Year", values_to = "Volume", `2014`:`2024`) |>mutate(
+    Volume = as.numeric(str_replace(Volume, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(Category == "Sweet Biscuits, Snack Bars and Fruit Snacks" & 
+         Geography == "Italy" & 
+         (`Data Type` == "Total Volume") & 
+         Year <= time_range[2] & 
+         Year >= time_range[1]) |>
+  ggplot(aes(x = as.integer(Year), y = Volume, label = round(Volume, 1))) +
+    geom_col(colour = "black", alpha = .8, fill = brewer.pal(3, "Pastel1")[1]) +
+    geom_text(aes(x = as.integer(Year), y = Volume, label = Volume), position = position_stack(vjust = 0.5), size = 3) +
+    scale_fill_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    labs(
+        title = "Sweet Biscuits, Snack Bars and Fruit Snacks: Volumes",
+        subtitle = "Italy",
+        y = "Tonnes ('000)",
+        x = "Year",
+        fill = "Volume",
+        caption = "Source: Passport/Euromonitor",
+        tag= "Figure 7"
+    ) + 
+    theme(
+        legend.position = "right", 
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8)
+    )
+ggsave("./img/figure7.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 8
+
+```{r}
+countries_sel <- c("Western Europe", "Italy", "France", "Belgium")
+
+d.vol |> pivot_longer(names_to = "Year", values_to = "Volume", `2014`:`2024`) |>
+  mutate(
+    Volume = as.numeric(str_replace(Volume, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(Category == "Sweet Biscuits, Snack Bars and Fruit Snacks" & 
+         Geography %in% countries_sel & 
+         `Data Type` == "Total Volume" & 
+         Year <= time_range[2] & 
+         Year >= time_range[1]) |>
+  group_by(Geography) |>
+  mutate(Fixed = (Volume / Volume[Year == time_range[1]]) * 100) |>
+  ggplot(aes(x = as.integer(Year), y = Fixed, label = round(Fixed, 1), fill = Geography, color = Geography)) +
+    geom_hline(yintercept = 100, color = "blue", linetype = 2) +
+    geom_line(alpha = .6, size = 1) +
+    geom_point(alpha = 1, pch = 21, size = 8, fill = "white") +
+    geom_text(size = 2.4) +
+    scale_color_brewer(palette = "Set2") +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    labs(
+        title = "Sweet Biscuits, Snack Bars and Fruit Snacks: Volumes",
+        subtitle = paste(time_range[1], "-", time_range[2], ", Index (", time_range[1], "=100)", sep = ""),
+        y = "Index",
+        x = "Year",
+        color = "Country",
+        caption = "Source: Passport/Euromonitor",
+        tag = "Figure 8"
+    ) + 
+    theme(
+        legend.position = "right", 
+        axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure8.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 9
+
+```{r}
+
+d.vol |> pivot_longer(names_to = "Year", values_to = "Value", `2014`:`2024`) |>
+  mutate(
+    Value = as.numeric(str_replace(Value, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(Category == "Sweet Biscuits, Snack Bars and Fruit Snacks" & 
+         Geography == "Italy" & 
+         (`Data Type` == "Retail Value RSP") & 
+         Year <= time_range[2] & 
+         Year >= time_range[1]) |>
+  ggplot(aes(x = as.integer(Year), y = Value, label = round(Value, 1))) +
+    geom_col(colour = "black", alpha = .8, fill = brewer.pal(3, "Pastel1")[1]) +
+    geom_text(aes(x = as.integer(Year), y = Value, label = Value), position = position_stack(vjust = 0.5), size = 3) +
+    scale_fill_brewer(palette = "Set4") +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    labs(
+        title = "Sweet Biscuits, Snack Bars and Fruit Snacks: Values",
+        subtitle = "Italy",
+        y = "Euro (Mil.)",
+        x = "Year",
+        fill = "Value",
+        caption = "Source: Passport/Euromonitor",
+        tag = "Figure 9"
+    ) + 
+    theme(
+        legend.position = "right", 
+        axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure9.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 10
+
+```{r}
+countries_sel <- c("Western Europe", "Italy", "France", "Belgium")
+
+d.vol |> pivot_longer(names_to = "Year", values_to = "Value", `2014`:`2024`) |>
+  mutate(
+    Value = as.numeric(str_replace(Value, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(Category == "Sweet Biscuits, Snack Bars and Fruit Snacks" & 
+         Geography %in% countries_sel & 
+         `Data Type` == "Retail Value RSP" & 
+         Year <= time_range[2] & 
+         Year >= time_range[1]) |>
+  group_by(Geography) |>
+  mutate(Fixed = (Value / Value[Year == time_range[1]]) * 100) |>
+  ggplot(aes(x = as.integer(Year), y = Fixed, label = round(Fixed, 1), fill = Geography, color = Geography)) +
+    geom_hline(yintercept = 100, color = "blue", linetype = 2) +
+    geom_line(alpha = .6, size = 1) +
+    geom_point(alpha = 1, pch = 21, size = 6, fill = "white") +
+    geom_text(size = 1.8) +
+    scale_color_brewer(palette = "Set2") +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    labs(
+        title = "Sweet Biscuits, Snack Bars and Fruit Snacks: Values",
+        subtitle = paste(time_range[1], "-", time_range[2], ", Index (", time_range[1], "=100)", sep = ""),
+        y = "Index",
+        x = "Year",
+        color = "Country",
+        caption = "Source: Passport/Euromonitor",
+        tag = "Figure 10"
+    ) + 
+    theme(
+        legend.position = "right", 
+        axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+
+ggsave("./img/figure10.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 11
+
+```{r}
+countries_sel <- c("Western Europe", "Italy", "France", "Belgium")
+
+d.price <-
+    full_join(
+        d.vol |>
+            pivot_longer(names_to = "Year", values_to = "Value", `2014`:`2024`) |>
+          mutate(
+    Value = as.numeric(str_replace(Value, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+            filter(Category == "Sweet Biscuits, Snack Bars and Fruit Snacks" & Geography %in% countries_sel & (`Data Type` == "Retail Value RSP") & Year <= time_range[2] & Year >= time_range[1]), 
+        d.vol |>
+            pivot_longer(names_to = "Year", values_to = "Volume", `2014`:`2024`) |>
+     mutate(
+    Volume = as.numeric(str_replace(Volume, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+            filter(Category == "Sweet Biscuits, Snack Bars and Fruit Snacks" & Geography %in% countries_sel & `Data Type` == "Retail Volume" & Year <= time_range[2] & Year >= time_range[1]),
+        by = c("Geography", "Year")
+    ) |>
+    select(Geography, Year, Value, Volume) |>
+    mutate(Avg_Price = round(Value / Volume, 3))
+
+d.pricek <- d.price |>
+  filter(Year == "2024")
+library(kableExtra)
+kable(d.pricek, align = "l") %>%
+  add_header_above(c("Average Retail Price (1 Kg)"=5),bold = TRUE) %>%         
+   kable_styling(font_size=12,bootstrap_options = c("striped", "condensed", "responsive", "bordered" )) %>%
+  scroll_box(width = "800px", height = "200px")
+```
+
+```{r}
+d.price |> group_by(Geography) |> mutate(Fixed = (Avg_Price / Avg_Price[Year == time_range[1]]) * 100) |>
+  filter(Geography == "Italy") |> 
+  ggplot(aes(x = as.integer(Year), y = Fixed, label = round(Fixed, 1))) +
+    geom_hline(yintercept = 100, color = "blue", linetype = 2) +
+    geom_line(alpha = .6, size = 1, color = brewer.pal(3, "Set2")[1]) +
+    geom_point(alpha = 1, pch = 21, size = 8, fill = "white", color = brewer.pal(3, "Set1")[2]) +
+    geom_text(size = 3) +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    labs(
+        title = "Sweet Biscuits, Snack Bars and Fruit Snacks: Average Retail Price",
+        subtitle = paste(time_range[1], "-", time_range[2], ", Index (", time_range[1], "=100)", sep = ""),
+        y = "Index",
+        x = "Year",
+        color = "Country",
+        caption = "Source: Passport/Euromonitor",
+        tag = "Figure 11"
+    ) + 
+    theme(
+        legend.position = "right", 
+        axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 14, face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8) 
+    )
+ggsave("./img/figure11.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 12
+
+```{r}
+countries_sel <- c("Western Europe", "Italy", "France", "Belgium")
+
+d.price |> filter(Geography %in% countries_sel) |> 
+  group_by(Geography) |> 
+  mutate(Fixed = (Avg_Price / Avg_Price[Year == time_range[1]]) * 100) |>
+  ggplot(aes(x = as.integer(Year), y = Fixed, label = round(Fixed, 1), fill = Geography, color = Geography)) +
+  geom_hline(yintercept = 100, color = "blue", linetype = 2) +
+  geom_line(alpha = .6, size = 1) +
+  geom_point(alpha = 1, pch = 21, size = 6, fill = "white") +
+  geom_text(size = 1.8) +
+  scale_color_brewer(palette = "Set2") +
+  scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+  theme_bw() +
+  labs(
+    title = "Sweet Biscuits, Snack Bars and Fruit Snacks: Average Retail Prices",
+    subtitle = paste(time_range[1], "-", time_range[2], ", Index (", time_range[1], "=100)", sep = ""),
+    y = "Index",
+    x = "Year",
+    color = "Country",
+    caption = "Source: Passport/Euromonitor",
+    tag = "Figure 12"
+  ) + 
+  theme(
+    legend.position = "right", 
+    axis.text = element_text(size = 8), 
+    axis.title = element_text(size = 14, face = "bold"), 
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8)
+  )
+
+ggsave("./img/figure12.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 13
+
+```{r}
+d.data <- read_excel("d_valvol.xls")
+
+d.data %>% pivot_longer(names_to = "Year", values_to="Volume",`2014`:`2024`) %>%
+   mutate(
+    Volume = as.numeric(str_replace(Volume, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(Geography == "Italy"  & `Data Type`=="Total Volume")  %>%
+  filter(Category=="Fruit Snacks" | Category=="Snack Bars" | Category=="Sweet Biscuits") %>% 
+  group_by(Geography,Year) %>%
+  mutate(Tot_Volume=sum(Volume)) %>%
+  mutate(Share=(Volume/Tot_Volume)*100) %>%
+  mutate(Year=as.integer(Year)) %>%
+    ggplot(aes(x=Year,y=Share,fill=fct_reorder(Category,Share)))+
+    geom_col(colour="black",alpha=.6,width=1)+
+    geom_text(aes(x=Year, y=Share, label=paste(round(Share,1),"%",sep="")),position = position_stack(vjust = 0.5),size=2)+
+    scale_x_continuous(breaks=time_range[1]:time_range[2],minor_breaks=time_range[1]:time_range[2])+
+    theme_bw()+
+    scale_fill_brewer(palette = "Pastel1")+
+    labs(title="Sweet Biscuits, Snack Bars and Fruit Snacks segments",
+       subtitle = "Volumes, %",
+       x = "Year",
+       y = "%",
+       fill="",
+       caption="Passport/Euromonitor",
+       tag = "Figure 13")+ 
+    theme(legend.position="bottom",
+        legend.text=element_text(size=6),
+        legend.key.size = unit(.5, "cm"),
+        axis.text=element_text(size=8),
+        axis.title=element_text(size=14,face="bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size=8))+
+        coord_flip()
+
+ggsave("./img/figure13.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 14
+
+```{r}
+d.data |>
+    pivot_longer(names_to = "Year", values_to = "Value", `2014`:`2024`) |>
+   mutate(
+    Value = as.numeric(str_replace(Value, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+    filter(Geography == "Italy" & `Data Type` == "Retail Value RSP") %>%
+    filter(Category == "Fruit Snacks" | Category == "Snack Bars" | Category == "Sweet Biscuits") %>%
+    group_by(Geography, Year) %>%
+    mutate(Tot_Value = sum(Value)) %>%
+    mutate(Share = (Value / Tot_Value) * 100) %>%
+    mutate(Year = as.integer(Year)) %>%
+    ggplot(aes(x = Year, y = Share, fill = fct_reorder(Category, Share))) +
+    geom_col(colour = "black", alpha = .6, width = 1) +
+    geom_text(aes(x = Year, y = Share, label = paste(round(Share, 1), "%", sep = "")), position = position_stack(vjust = 0.5), size = 2) +
+    scale_x_continuous(breaks = time_range[1]:time_range[2], minor_breaks = time_range[1]:time_range[2]) +
+    theme_bw() +
+    scale_fill_brewer(palette = "Pastel1") +
+    labs(
+        title = "Sweet Biscuits, Snack Bars and Fruit Snacks segments",
+        subtitle = "Values, %",
+        x = "Year",
+        y = "%",
+        fill = "",
+        caption = "Passport/Euromonitor",
+        tag = "Figure 14"
+    ) +
+    theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(.5, "cm"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8)
+    ) +
+    coord_flip()
+
+ggsave("./img/Figure14.png", width = 12, height = 8, dpi = 300)
+```
+
+#DEMAND ##Figure 18
+
+```{r}
+Year <- 2014:2024
+Vegetarian <- c(6.5, 5.7, 7.1, 4.6, 6.2, 5.4, 6.7, 5.8, 5.4, 4.2, 7.2)
+Vegan <- c(0.6, 0.2, 1.0, 3.0, 0.9, 1.9, 2.2, 2.4, 1.3, 2.4, 2.3)
+
+veg <- data.frame(Year, Vegetarian, Vegan)
+veg_long <- melt(veg, id.vars = "Year", variable.name = "Diet", value.name = "Value")
+ggplot(veg_long, aes(x = factor(Year), y = Value, fill = Diet)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Trends in Vegetarian and Vegan Diets (2014–2024) Italy",
+       x = "Year", y = "Percentage (%)",
+       caption = "Statista",
+       tag = "Figure 18") +
+  scale_fill_manual(values = c("Vegetarian" = "pink", "Vegan" = "lightblue")) +
+  theme_minimal()
+ggsave("./img/figure18.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 17
+
+```{r}
+features <- c(
+  "Place of origin/production\n(e.g., 100% Italian, local..)",
+  "Packaging/wrapping\n(e.g. plastic free, recycled, reusable..)",
+  "Raw materials\n(e.g., 100% of plant origin..)",
+  "Environmental or social certifications\n(organic, fair trade..)",
+  "Sustainability info on label\n(not certified green claims)",
+  "Media message\n(social media, TV, radio)"
+)
+
+percentages <- c(31, 28, 14, 13, 11, 3)
+
+sustain <- data.frame(Feature = features, Percentage = percentages)
+
+ggplot(sustain, aes(x = reorder(Feature, Percentage), y = Percentage)) +
+  geom_bar(stat = "identity", fill = "#9b59b6") + 
+  coord_flip() +
+  geom_text(aes(label = paste0(Percentage, "%")), hjust = -0.1) +
+  labs(title = "Main Features of Sustainable Food (Italy, 2023)",
+       x = "", y = "Percentage (%)",
+       caption = "Statista",
+       tag = "Figure 17") +
+  theme_minimal() +
+  ylim(0, 35)
+ggsave("./img/figure17.png", width = 12, height = 8, dpi = 300)
+
+```
+
+##Figure 15
+
+```{r}
+demand_avgpr <- filter(d.price, Geography == "Italy")
+
+demand_avgpr |>
+ggplot(aes(x=Volume, y=Avg_Price,label=Year))+
+  theme_bw()+
+  geom_point(shape=13, size=10, color = "red", alpha = 0.5)+
+  geom_text(hjust=0.5, vjust=0.5, size=3, color = "black")+
+  labs(title = "Demand and supply", 
+    x = "Quantity (000s Tonnes)", 
+    y = "Average prices (EUR)", 
+    caption = "Passport/Euromonitor",
+    tag = "Figure 15")
+ggsave("./img/figure15.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 16
+
+```{r}
+demand <- read_excel("demand.xls")
+
+demand |> 
+  pivot_longer(names_to = "Year", values_to="Volume",`2014`:`2024`) |>
+  filter(Geography=="Italy" & `Data Type`=="Retail Value RSP" & 
+         (`Category`=="Confectionery" | `Category`=="Ice Cream" | 
+          `Category`=="Savoury Snacks" | 
+          `Category`=="Sweet Biscuits, Snack Bars and Fruit Snacks") & 
+         Year<=time_range[2] & Year>=time_range[1]) |>
+  group_by(Geography, Year) |>
+  mutate(Tot_Volume = sum(Volume)) |>
+  mutate(Share = (Volume / Tot_Volume) * 100) |>
+  mutate(Year = as.integer(Year)) |>
+  ggplot(aes(x = Year, y = Share, fill = fct_reorder(Category, Share))) +
+  geom_col(colour = "black", alpha = .6, width = 1) +
+  geom_text(aes(x = Year, y = Share, label = paste(round(Share,1),"%",sep="")), 
+            position = position_stack(vjust = 0.5), size = 2) +
+  scale_x_continuous(breaks = time_range[1]:time_range[2],
+                     minor_breaks = time_range[1]:time_range[2]) +
+  theme_bw() +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Share of revenues",
+       subtitle = "Italy",
+       x = "Year",
+       y = "%",
+       fill = "",
+       caption = "Passport/Euromonitor",
+       tag = "Figure 16") + 
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(.5, "cm"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) +
+  coord_flip() +
+  guides(fill = guide_legend(reverse = TRUE)) 
+ggsave("./img/figure16.png", width = 12, height = 8, dpi = 300)
+```
+
+#SUPPLY ##Figure 19
+
+```{r}
+sbs_data <- get_eurostat("sbs_na_ind_r2") %>%
+  filter(geo == "IT")
+sbs_data$TIME_PERIOD <- as.numeric(format(sbs_data$TIME_PERIOD, "%Y"))
+
+c_food_italy <- subset(sbs_data, 
+                         nace_r2 %in% c("C107", "C10", "C1072") & 
+                           TIME_PERIOD >= 2014 &
+                           indic_sb == "V16130")
+
+sbs_recent <- get_eurostat("sbs_ovw_act") %>%
+  filter(geo == "IT",
+         nace_r2 %in% c("C107", "C10", "C1072") & 
+           TIME_PERIOD >= 2014 &
+           indic_sbs == "SAL_NR")
+sbs_recent$TIME_PERIOD <- as.numeric(format(sbs_recent$TIME_PERIOD, "%Y"))
+
+c_food_combined <- bind_rows(c_food_italy, sbs_recent)
+
+yearly_totals <- c_food_combined %>%
+  group_by(TIME_PERIOD, nace_r2) %>%  
+  summarise(total_employees = sum(values, na.rm = TRUE), .groups = 'drop')
+
+reference_values_emp <- yearly_totals %>%
+  filter(TIME_PERIOD == reference_year) %>%
+  select(nace_r2, total_employees) %>%
+  rename(reference_emp = total_employees)
+yearly_total_emp_pct <- yearly_totals %>%
+  left_join(reference_values_emp, by = "nace_r2") %>%
+  mutate(total_emp_pct = (total_employees / reference_emp) * 100)
+
+ggplot(yearly_total_emp_pct, aes(x = TIME_PERIOD, y = total_emp_pct, color = nace_r2, group = nace_r2)) +
+  geom_line(linewidth = 1) +  
+  scale_y_continuous(labels = scales::comma) +
+  geom_point(size = 3) +
+  geom_hline(colour = "grey2", size = 0.5, yintercept = 100, linetype = "dashed") +
+  scale_color_manual(values = c("C10" = "pink", "C107" = "lightblue", "C1072" = "green"),
+                     labels = c("C10" = "Food C10", "C107" = "Bakery C107", "C1072" = "Snacks C1072")) +  # 
+  labs(title = "Employees % growth in Food Manufacturing in Italy (2014-2024)",
+       x = "Year",
+       y = "Employees % (2014 as index)",
+       color = "Manuf. Category",
+       tag = "Figure 19",
+       caption = "Eurostat") +
+  theme_minimal() +
+  theme(legend.position = "right")
+ggsave("./img/figure19.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 20
+
+```{r}
+ent_value <- get_eurostat("sbs_na_ind_r2", time_format = "num") %>%
+  filter(
+    geo == "IT",
+    nace_r2 %in% c("C10", "C107", "C1072"),
+    TIME_PERIOD >= 2014,
+    indic_sb == "V11110"
+  )
+
+ent_number <- get_eurostat("sbs_ovw_act", time_format = "num") %>%
+  filter(
+    geo == "IT",
+    nace_r2 %in% c("C10", "C107", "C1072"),
+    TIME_PERIOD >= 2014,
+    indic_sbs == "ENT_NR"
+  )
+
+combined_ent <- bind_rows(ent_value, ent_number)
+
+yearly_ent <- combined_ent %>%
+  group_by(TIME_PERIOD, nace_r2) %>%
+  summarise(total_ent = sum(values, na.rm = TRUE), .groups = "drop")
+
+reference_values <- yearly_ent %>%
+  filter(TIME_PERIOD == 2014) %>%
+  select(nace_r2, reference_ent = total_ent)
+
+yearly_ent_pct <- yearly_ent %>%
+  left_join(reference_values, by = "nace_r2") %>%
+  mutate(total_ent_pct = (total_ent / reference_ent) * 100)
+
+
+ggplot(yearly_ent_pct, aes(x = TIME_PERIOD, y = total_ent_pct, color = nace_r2)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 100, linetype = "dashed", color = "grey30") +
+  scale_color_manual(
+    values = c("C10" = "pink", "C107" = "lightblue", "C1072" = "green"),
+    labels = c("C10" = "Food", "C107" = "Bakery", "C1072" = "Snacks")
+  ) +
+  labs(
+    title = "Total Active Enterprises in Italy (as % of 2014)",
+    x = "Year",
+    y = "Percentage of 2014 Enterprises",
+    color = "Sectors",
+    tag = "Figure 20",
+    caption = "Eurostat"
+  ) +
+  theme_minimal()
+ggsave("./img/figure20.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 22
+
+```{r}
+df <- read_excel("marketshare.xls")
+
+df_sweet <- df |> 
+  pivot_longer(names_to = "Year", values_to="Volume", cols = `2016`:`2024`) |>
+  mutate(
+    Volume = as.numeric(str_replace(Volume, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(
+    Category == "Sweet Biscuits, Snack Bars and Fruit Snacks",
+    Geography == "Italy",
+    `Company Name` %in% c(
+      "Barilla Holding SpA", "Mondelez International Inc", "Ferrero & related parties", "Colussi Group SpA",
+      "Galbusera SpA", "Bauli SpA", "Balocco SpA",
+      "Loacker AG SpA"),
+    `Data Type` == "Retail Value RSP"
+  )
+
+company_order <- df_sweet %>%
+  filter(Year == 2024) %>%
+  arrange(desc(Volume)) %>%
+  pull(`Company Name`)
+
+df_sweet <- df_sweet %>%
+  mutate(`Company Name` = factor(`Company Name`, levels = company_order))
+
+ggplot(df_sweet, aes(x = Year, y = Volume, fill = `Company Name`)) +
+  geom_col(colour = "black", alpha = 0.8) +
+  geom_text(aes(label = Volume), position = position_stack(vjust = 0.5), size = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_x_continuous(breaks = 2016:2024) +
+  theme_bw() +
+  labs(
+    title = "Market Shares (Value RSP)",
+    subtitle = "Italy - Sweet Biscuits, Snack Bars and Fruit Snack",
+    y = "%",
+    x = "Year",
+    fill = "Companies",
+    caption = "Passport/Euromonitor",
+    tag = "Figure 22"
+  ) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8)
+  )
+ggsave("./img/figure22.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 21
+
+```{r}
+df <- read_excel("marketshare.xls")
+
+df_snacks <- df |> 
+  pivot_longer(names_to = "Year", values_to="Volume", cols = `2016`:`2024`) |>
+  mutate(
+    Volume = as.numeric(str_replace(Volume, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(
+    Category == "Snacks",
+    Geography == "Italy",
+    `Company Name` %in% c(
+      "Ferrero & related parties", "Barilla Holding SpA", "Perfetti Van Melle Group",
+      "Nestlé SA", "Unilever Group", "Mondelez International Inc",
+      "Chocoladefabriken Lindt & Sprüngli AG", "Unichips Italia SpA"
+    ),
+    `Data Type` == "Retail Value RSP"
+  )
+
+company_order <- df_snacks %>%
+  filter(Year == 2024) %>%
+  arrange(desc(Volume)) %>%
+  pull(`Company Name`)
+
+df_snacks <- df_snacks %>%
+  mutate(`Company Name` = factor(`Company Name`, levels = company_order))
+
+ggplot(df_snacks, aes(x = Year, y = Volume, fill = `Company Name`)) +
+  geom_col(colour = "black", alpha = 0.8) +
+  geom_text(aes(label = Volume), position = position_stack(vjust = 0.5), size = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_x_continuous(breaks = 2016:2024) +
+  theme_bw() +
+  labs(
+    title = "Market Shares (Value RSP)",
+    subtitle = "Italy - Snacks",
+    y = "%",
+    x = "Year",
+    fill = "Companies",
+    caption = "Passport/Euromonitor",
+    tag = "Figure 21"
+  ) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8)
+  )
+ggsave("./img/figure21.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 23
+
+```{r}
+c4 <- read_excel("c4.xls")
+
+c4_long <- c4 |>
+  pivot_longer(cols = starts_with("20"), names_to = "Year", values_to = "Values") |>
+  mutate(
+    Values = as.numeric(str_replace(Values, ",", ".")),
+    Year = as.integer(Year)
+  ) |>
+  filter(Year %in% c(2016,2024))
+
+ggplot(c4_long, aes(x = as.factor(Year), y = Values, fill = Geography)) +
+  geom_col(colour = "black", alpha = 0.5, position = position_dodge(0.9)) +
+  coord_flip() +
+  theme_bw() +
+  scale_fill_brewer(palette = "Set3") +
+  labs(
+    title = "C4 Index",
+    subtitle = "Cross-country comparison (2016 - 2024)",
+    y = "%",
+    x = "Year",
+    fill = "Countries",
+    caption = "Euromonitor/Passport",
+    tag = "Figure 23"
+  ) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 8),
+    legend.text = element_text(size = 6),
+    legend.key.size = unit(0.5, "cm"),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8)
+  )
+ggsave("./img/figure23.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 24
+
+```{r}
+ultimo_raw <- get_eurostat("sbs_na_ind_r2", time_format = "num", filters = list(geo = "IT"))
+
+ultimo_plot <- ultimo_raw |>
+  filter(indic_sb %in% c("V15110", "V13310")) |>
+  pivot_wider(names_from = indic_sb, values_from = values) |>
+  filter(time == 2019) |>
+  filter(nace_r2 %in% c("C1072", "C107", "C10", "C")) |>
+  mutate(ratio = round(V15110 / V13310, 3))
+
+ggplot(ultimo_plot, aes(x = nace_r2, y = ratio, fill = nace_r2)) +
+  geom_col(colour = "black", alpha = 0.5, position = position_dodge(0.9)) +
+  theme_bw() +
+  scale_fill_brewer(
+    palette = "Pastel1", 
+    name = "Sector", 
+    labels = c(
+    "C"     = "Manufacturing",
+    "C10"   = "Food",
+    "C107"  = "Bakery",
+    "C1072" = "Snacks"
+  )
+  ) +
+  labs(
+    title = "Investment in physical assets relative to labor cost",
+    subtitle = "Italy, 2019",
+    y = "Ratio",
+    caption = "Eurostat (sbs_na_ind_r2, V15110/V13310)",
+    tag = "Figure 24"
+  ) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 8),
+    legend.text = element_text(size = 6),
+    legend.key.size = unit(0.5, "cm"),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  )
+
+ggsave("./img/figure24.png", width = 12, height = 8, dpi = 300)
+```
+
+#COMPANY ##Figure 25
+
+```{r}
+fr <- read_excel("ferrero.xls")
+
+yrs <- grep("^20\\d{2}$", names(fr))       
+fr[yrs] <- lapply(fr[yrs], as.character)    
+
+fr_sweet <- fr |>
+  pivot_longer(
+    names_to  = "Year",
+    values_to = "Value",
+    cols      = `2016`:`2024`
+  ) |>
+
+  mutate(
+    Value = str_replace(Value, ",", "."),   
+    Value = na_if(Value, "-"),              
+    Value = as.numeric(Value),             
+    Year  = as.integer(Year)
+  ) |>
+  filter(
+    Category  == "Sweet Biscuits, Snack Bars and Fruit Snacks",
+    Geography == "Italy",
+    `Data Type` == "Retail Value RSP"
+  )
+
+brand_order <- fr_sweet |>
+  filter(Year == 2024) |>
+  arrange(desc(Value)) |>
+  pull(`Brand Name`)
+
+fr_sweet <- fr_sweet |>
+  mutate(`Brand Name` = factor(`Brand Name`, levels = brand_order))
+
+ggplot(fr_sweet, aes(x = Year, y = Value, fill = `Brand Name`)) +
+  geom_col(colour = "black", alpha = 0.85) +
+  geom_text(aes(label = round(Value, 1)),
+            position = position_stack(vjust = 0.5), size = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_x_continuous(breaks = 2016:2024) +
+  theme_bw() +
+  labs(
+    title    = "Market Shares (Retail Value RSP)",
+    subtitle = "Italy – Sweet Biscuits, Snack Bars and Fruit Snacks",
+    x        = "Year",
+    y        = "%",
+    fill     = "Brands",
+    caption  = "Source: Passport / Euromonitor",
+    tag      = "Figure 25"
+  ) +
+  theme(
+    legend.position = "right",
+    axis.text       = element_text(size = 8),
+    axis.title      = element_text(size = 14, face = "bold"),
+    axis.text.x     = element_text(angle = 45, hjust = 1, size = 8)
+  )
+
+ggsave("./img/figure25.png", width = 12, height = 8, dpi = 300)
+```
+
+##Figure 26
+
+```{r}
+fr <- read_excel("ferrero.xls")
+
+yrs <- grep("^20\\d{2}$", names(fr))      
+fr[yrs] <- lapply(fr[yrs], as.character)  
+
+fr_confectionery <- fr |>
+  pivot_longer(
+    names_to  = "Year",
+    values_to = "Value",
+    cols      = `2016`:`2024`
+  ) |>
+  mutate(
+    Value = str_replace(Value, ",", "."), 
+    Value = na_if(Value, "-"),             
+    Value = as.numeric(Value),
+    Year  = as.integer(Year)
+  ) |>
+  filter(
+    Category  == "Confectionery",
+    Geography == "Italy",
+    `Data Type` == "Retail Value RSP"
+  )
+
+brand_order <- fr_confectionery |>
+  filter(Year == 2024) |>
+  arrange(desc(Value)) |>
+  pull(`Brand Name`)
+
+fr_confectionery <- fr_confectionery |>
+  mutate(`Brand Name` = factor(`Brand Name`, levels = brand_order))
+
+ggplot(fr_confectionery, aes(x = Year, y = Value, fill = `Brand Name`)) +
+  geom_col(color = "black", alpha = 0.85) +
+  geom_text(aes(label = round(Value, 1)),
+            position = position_stack(vjust = 0.5), size = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_x_continuous(breaks = 2016:2024) +
+  theme_bw() +
+  labs(
+    title    = "Market Shares (Retail Value RSP)",
+    subtitle = "Italy – Confectionery",
+    x        = "Year",
+    y        = "%",
+    fill     = "Brands",
+    caption  = "Source: Passport / Euromonitor",
+    tag      = "Figure 26"
+  ) +
+ theme(
+  legend.position = "right",
+  legend.text = element_text(size = 7),       
+  legend.key.size = unit(0.5, "lines"),       
+  axis.text = element_text(size = 8),
+  axis.title = element_text(size = 14, face = "bold"),
+  axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8)
+)+
+  coord_flip()
+ggsave("./img/figure26.png", width = 16, height = 8, dpi = 300)
+
+
+```
+
+##Figure 28
+
+```{r}
+raw <- tribble(
+  ~Fiscal_Year, ~Revenue_chr,
+  "2013/2014", "8,41",
+  "2014/2015", "9,54",
+  "2015/2016", "10,33",
+  "2016/2017", "10,49",
+  "2017/2018", "10,71",
+  "2018/2019", "11,38",
+  "2019/2020", "12,27",
+  "2020/2021", "12,68",
+  "2021/2022", "14",
+  "2022/2023", "17",
+  "2023/2024", "18,40"
+)
+
+revenue <- raw %>%
+  mutate(
+    Revenue = str_replace(Revenue_chr, ",", ".") %>% as.numeric()
+  )
+
+high_blue <- "lightblue"
+
+p <- ggplot(revenue, aes(x = Fiscal_Year, y = Revenue)) +
+  geom_col(fill = high_blue, colour = "black", width = 0.8) +
+  geom_text(aes(label = Revenue),
+            vjust = -0.3,                
+            size = 3.5, colour = "black") +
+  labs(
+    title    = "Revenue of Ferrero from 2013 to 2024",
+    subtitle = "(in billion euros)",
+    x = NULL, y = "Revenue (bn €)",
+    caption  = "Source: Statista",
+    tag = "Figure 28"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 16),
+    panel.grid.major.x = element_blank(),
+    axis.text.x  = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
+
+print(p)
+
+ggsave("./img/figure28.png", p, width = 9, height = 6, dpi = 300)
+
+```
+
+##Figure 27
+
+```{r}
+companies <- tribble(
+  ~Company, ~Revenue_chr,
+  "Mondelez International",                      "36",
+  "Mars Inc.",                                   "22",
+  "Ferrero Group",                               "18,20",
+  "Hershey Co.",                                 "11,16",
+  "Nestlé SA",                                   "9,40",
+  "Meiji Co. Ltd.",                              "7,83",
+  "Lindt & Sprüngli",                            "5,96",
+  "pladis",                                      "3,96",
+  "Haribo GmbH",                                 "3,30",
+  "Want Want China Holdings Ltd.",               "3,22"
+)
+
+companies <- companies %>%
+  mutate(
+    Revenue = str_replace(Revenue_chr, ",", ".") %>% as.numeric(),
+    Highlight = ifelse(Company == "Ferrero Group", "Ferrero", "Others"),
+    Company = fct_reorder(Company, Revenue) 
+  )
+
+colors <- c("Ferrero" = "lightblue", "Others" = "pink")
+
+ggplot(companies, aes(x = Company, y = Revenue, fill = Highlight)) +
+  geom_col(color = "black") +
+  geom_text(aes(label = Revenue),
+            hjust = -0.1, color = "black", size = 3.5) +
+  coord_flip() +
+  scale_fill_manual(values = colors) +
+  labs(
+    title    = "Global Confectionery Market: Leading Companies (2024)",
+    subtitle = "Net sales in billion U.S. dollars",
+    x        = NULL, y = "Net Sales (USD bn)",
+    caption  = "Source: Statista",
+    tag      = "Figure 27"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15),
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10),
+    panel.grid.major.y = element_blank(),
+    legend.position = "none"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
+
+ggsave("./img/figure27.png", width = 10, height = 6, dpi = 300)
+```
+
+##Figure 30
+
+```{r}
+ferrero_prod <- tribble(
+  ~Year, ~Volume_chr,
+  "2013/2014", "1.149.900",
+  "2014/2015", "1.207.800",
+  "2015/2016", "1.265.950",
+  "2016/2017", "1.277.126",
+  "2017/2018", "1.308.297",
+  "2018/2019", "1.355.254",
+  "2019/2020", "1.297.432",
+  "2020/2021", "1.374.224",
+  "2021/2022", "1.456.631",
+  "2022/2023", "1.521.254"
+)
+
+ferrero_prod <- ferrero_prod %>%
+  mutate(
+    Volume = str_replace_all(Volume_chr, "\\.", "") %>% as.numeric()
+  )
+
+ggplot(ferrero_prod, aes(x = Year, y = Volume, group = 1)) +
+  geom_line(color = "#0066FF", size = 1.2) +
+  geom_point(color = "#0066FF", size = 3) +
+  labs(
+    title    = "Ferrero: Annual Production Volume (2013–2023)",
+    subtitle = "Total annual production volume (in tons)",
+    x        = NULL, y = "Volume (tons)",
+    caption  = "Source: Statista",
+    tag      = "Figure 30"
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.05))) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+ggsave("./img/figure30.png", width = 10, height = 6, dpi = 300)
+```
+
+##Figure 29
+
+```{r}
+turnover <- tribble(
+  ~Region, ~Share,
+  "Rest of Europe",       56,
+  "Outside of Europe",    32,
+  "Italy",                12
+)
+
+turnover <- turnover %>%
+  mutate(
+    Fraction = Share / sum(Share),
+    Label = paste0(Region, "\n", percent(Fraction))
+  )
+
+ggplot(turnover, aes(x = "", y = Share, fill = Region)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = percent(Fraction)), 
+            position = position_stack(vjust = 0.5), size = 5) +
+  labs(
+    title    = "Ferrero Turnover Distribution by Region (2019/2020)",
+    subtitle = "Based on net sales (%)",
+    caption  = "Source: Statista",
+    fill     = "Geographical Area",
+    tag      = "Figure 29"
+  ) +
+  theme_void(base_size = 14) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12),
+    legend.title  = element_text(size = 12),
+    legend.text   = element_text(size = 11)
+  ) +
+  scale_fill_brewer(palette = "Pastel1")
+
+ggsave("./img/figure29.png", width = 8, height = 6, dpi = 300)
+
+```
